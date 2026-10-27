@@ -73,9 +73,10 @@ foreach (string url in new[] { "file:///C:/Windows", "http://github.com/Silverpi
 Check(Catalog.SafeLink("https://github.com/Silverpine-Modding/Mod/releases/tag/v1.0.0"), "organization HTTPS release links accepted");
 var service = new UpdateService();
 Check(UnityEngine.Networking.UnityWebRequest.Sent.Count == 0, "service creation does not contact GitHub");
+Check(UnityEngine.GameObject.Created == 0, "service initialization does not create a bootstrap Unity host");
 UnityEngine.Networking.UnityWebRequest.Next = new();
 UnityEngine.Networking.UnityWebRequest.Next.downloadHandler.text = fixture;
-service.Check(); service.Check(); service.Finish();
+service.Check(); service.Check(); UnityEngine.MonoBehaviour.Latest.Finish();
 var request = UnityEngine.Networking.UnityWebRequest.Sent.Single();
 Check(request.Url == UpdateService.CatalogUrl && request.timeout == 25 && request.redirectLimit == 0 && request.Disposed,
     "one bounded, redirect-free request is disposed after success");
@@ -84,22 +85,73 @@ service.Check();
 Check(UnityEngine.Networking.UnityWebRequest.Sent.Count == 1, "cooldown prevents repeat requests");
 UnityEngine.Time.realtimeSinceStartup = 31;
 UnityEngine.Networking.UnityWebRequest.Next = new() { result=UnityEngine.Networking.UnityWebRequest.Result.ConnectionError, error="offline", responseCode=0 };
-service.Check(); service.Finish();
+service.Check(); UnityEngine.MonoBehaviour.Latest.Finish();
 Check(service.Catalog != null && service.Error.Contains("offline") && !service.Busy, "offline check retains previous results and reports failure");
 UnityEngine.Time.realtimeSinceStartup = 62;
 UnityEngine.Networking.UnityWebRequest.Next = new();
 UnityEngine.Networking.UnityWebRequest.Next.downloadHandler.text = "<html>error</html>";
-service.Check(); service.Finish();
+service.Check(); UnityEngine.MonoBehaviour.Latest.Finish();
 Check(service.Catalog != null && service.Error.Contains("Could not read") && !service.Busy, "malformed network response preserves last successful catalog");
 UnityEngine.Time.realtimeSinceStartup = 93;
 UnityEngine.Networking.UnityWebRequest.Next = new() { downloadedBytes=3*1024*1024 };
-service.Check(); service.Finish();
+service.Check(); UnityEngine.MonoBehaviour.Latest.Finish();
 Check(service.Error.Contains("limit") && !service.Busy, "oversized response is rejected");
 UnityEngine.Time.realtimeSinceStartup = 124;
 UnityEngine.Networking.UnityWebRequest.Next = new() { ThrowOnSend=true };
-service.Check(); service.Finish();
+service.Check(); UnityEngine.MonoBehaviour.Latest.Finish();
 Check(service.Error.Contains("Could not start") && !service.Busy && UnityEngine.Networking.UnityWebRequest.Next.Disposed,
     "request startup exception releases busy state and request");
+Check(UnityEngine.GameObject.Created == 1, "healthy runtime host is reused between checks");
+var destroyed = UnityEngine.MonoBehaviour.Latest;
+var cached = service.Catalog;
+destroyed.Destroyed = true;
+Check(destroyed == null && !ReferenceEquals(destroyed, null), "test models Unity's destroyed-object null semantics");
+UnityEngine.Time.realtimeSinceStartup = 155;
+UnityEngine.Networking.UnityWebRequest.Next = new();
+UnityEngine.Networking.UnityWebRequest.Next.downloadHandler.text = fixture;
+service.Check();
+Check(!ReferenceEquals(UnityEngine.MonoBehaviour.Latest, destroyed) && ReferenceEquals(cached, service.Catalog),
+    "destroyed native host is replaced without losing cached results");
+UnityEngine.MonoBehaviour.Latest.Finish();
+Check(service.Error == "" && !service.Busy, "checking succeeds after a destroyed host is recreated");
+UnityEngine.Time.realtimeSinceStartup = 186;
+var interruptedRequest = new UnityEngine.Networking.UnityWebRequest();
+interruptedRequest.Operation.isDone = false;
+UnityEngine.Networking.UnityWebRequest.Next = interruptedRequest;
+service.Check();
+var oldRunner = UnityEngine.MonoBehaviour.Latest;
+oldRunner.Tick();
+var stoppedRoutine = oldRunner.Pending;
+cached = service.Catalog;
+int sentBeforeCleanup = UnityEngine.Networking.UnityWebRequest.Sent.Count;
+oldRunner.Enabled = false;
+oldRunner.Callback("OnDisable");
+Check(interruptedRequest.Aborted && interruptedRequest.Disposed && !service.Busy && service.CanCheck,
+    "scene interruption aborts/disposes HTTP and releases busy state for retry");
+Check(ReferenceEquals(cached, service.Catalog) && service.Error.Contains("interrupted") &&
+    UnityEngine.Networking.UnityWebRequest.Sent.Count == sentBeforeCleanup,
+    "scene cleanup retains results and never initiates another request");
+var retried = new UnityEngine.Networking.UnityWebRequest();
+retried.Operation.isDone = false;
+retried.downloadHandler.text = fixture;
+UnityEngine.Networking.UnityWebRequest.Next = retried;
+service.Check();
+var newRunner = UnityEngine.MonoBehaviour.Latest;
+newRunner.Tick();
+Check(!ReferenceEquals(newRunner, oldRunner), "disabled host is replaced on explicit retry");
+oldRunner.Destroyed = true;
+oldRunner.Callback("OnDestroy");
+((IDisposable)stoppedRoutine!).Dispose();
+Check(service.Busy && !retried.Aborted && !retried.Disposed,
+    "late destruction/disposal of old host cannot cancel the new request");
+retried.Operation.isDone = true;
+newRunner.Finish();
+Check(service.Error == "" && !service.Busy && retried.Disposed, "retry after scene cleanup completes successfully");
+UnityEngine.Time.realtimeSinceStartup = 217;
+UnityEngine.MonoBehaviour.FailNextStart = true;
+service.Check();
+Check(!service.Busy && service.CanCheck && service.Error.Contains("Could not start the update check"),
+    "coroutine startup failure does not leave the menu stuck checking");
 if (args.Length > 0)
 {
     var real = Catalog.Parse(File.ReadAllText(args[0]));

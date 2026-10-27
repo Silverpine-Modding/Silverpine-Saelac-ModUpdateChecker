@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="..\Catalog.cs" Link="Catalog.cs"/>
     <Compile Include="..\UpdateService.cs" Link="UpdateService.cs"/>
+    <Compile Include="..\UpdateRunner.cs" Link="UpdateRunner.cs"/>
     <Reference Include="Newtonsoft.Json"><HintPath>$(SilverpineGameDir)\BepInEx\plugins\ModdingTools\Newtonsoft.Json.dll</HintPath></Reference>
   </ItemGroup>
 </Project>

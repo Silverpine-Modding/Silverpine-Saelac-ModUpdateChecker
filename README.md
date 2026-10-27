@@ -1,6 +1,6 @@
 # Mod Update Checker
 
-Optional BepInEx addon for Silverpine 1.7.3, version **1.0.0**.
+Optional BepInEx addon for Silverpine 1.7.3, version **1.0.1**.
 Created by **Saelac and ChatGPT**.
 
 [Download](https://github.com/Silverpine-Modding/Silverpine-Saelac-ModUpdateChecker/releases/latest)
@@ -78,6 +78,12 @@ Plugin Development folder, the adjacent framework Release build is preferred.
 Tests cover comparison, aliases, dependencies, obsolete/unknown/duplicate
 identities, and malformed/untrusted catalog data. Pass a local versions.json
 path after -- to validate the real catalog too.
+
+Version 1.0.1 creates the Unity request runner on demand and recreates it
+after native-object destruction. Cached results live independently of that
+runner. Scene cleanup cancels an active request, keeps the previous results,
+and allows an explicit retry. Regression tests model destroyed Unity wrappers,
+disabled hosts, interrupted requests, and delayed coroutine cleanup.
 
 In-game smoke checks: open from the main menu, close with Escape, enter a
 save and open from Mods, scroll/search, inspect an obsolete/unknown entry,
